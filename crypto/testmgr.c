@@ -1509,7 +1509,7 @@ static int alg_test_aead(const struct alg_test_desc *desc, const char *driver,
 	struct crypto_aead *tfm;
 	int err = 0;
 
-	tfm = crypto_alloc_aead(driver, type | CRYPTO_ALG_INTERNAL, mask);
+	tfm = crypto_alloc_aead(driver, type, mask);
 	if (IS_ERR(tfm)) {
 		printk(KERN_ERR "alg: aead: Failed to load transform for %s: "
 		       "%ld\n", driver, PTR_ERR(tfm));
@@ -1538,7 +1538,7 @@ static int alg_test_cipher(const struct alg_test_desc *desc,
 	struct crypto_cipher *tfm;
 	int err = 0;
 
-	tfm = crypto_alloc_cipher(driver, type | CRYPTO_ALG_INTERNAL, mask);
+	tfm = crypto_alloc_cipher(driver, type, mask);
 	if (IS_ERR(tfm)) {
 		printk(KERN_ERR "alg: cipher: Failed to load transform for "
 		       "%s: %ld\n", driver, PTR_ERR(tfm));
@@ -1567,7 +1567,7 @@ static int alg_test_skcipher(const struct alg_test_desc *desc,
 	struct crypto_skcipher *tfm;
 	int err = 0;
 
-	tfm = crypto_alloc_skcipher(driver, type | CRYPTO_ALG_INTERNAL, mask);
+	tfm = crypto_alloc_skcipher(driver, type, mask);
 	if (IS_ERR(tfm)) {
 		printk(KERN_ERR "alg: skcipher: Failed to load transform for "
 		       "%s: %ld\n", driver, PTR_ERR(tfm));
@@ -1619,7 +1619,7 @@ static int __alg_test_hash(const struct hash_testvec *template,
 	struct crypto_ahash *tfm;
 	int err;
 
-	tfm = crypto_alloc_ahash(driver, type | CRYPTO_ALG_INTERNAL, mask);
+	tfm = crypto_alloc_ahash(driver, type, mask);
 	if (IS_ERR(tfm)) {
 		printk(KERN_ERR "alg: hash: Failed to load transform for %s: "
 		       "%ld\n", driver, PTR_ERR(tfm));
@@ -1682,7 +1682,7 @@ static int alg_test_crc32c(const struct alg_test_desc *desc,
 	if (err)
 		goto out;
 
-	tfm = crypto_alloc_shash(driver, type | CRYPTO_ALG_INTERNAL, mask);
+	tfm = crypto_alloc_shash(driver, type, mask);
 	if (IS_ERR(tfm)) {
 		printk(KERN_ERR "alg: crc32c: Failed to load transform for %s: "
 		       "%ld\n", driver, PTR_ERR(tfm));
@@ -1724,7 +1724,7 @@ static int alg_test_cprng(const struct alg_test_desc *desc, const char *driver,
 	struct crypto_rng *rng;
 	int err;
 
-	rng = crypto_alloc_rng(driver, type | CRYPTO_ALG_INTERNAL, mask);
+	rng = crypto_alloc_rng(driver, type, mask);
 	if (IS_ERR(rng)) {
 		printk(KERN_ERR "alg: cprng: Failed to load transform for %s: "
 		       "%ld\n", driver, PTR_ERR(rng));
@@ -1751,7 +1751,7 @@ static int drbg_cavs_test(struct drbg_testvec *test, int pr,
 	if (!buf)
 		return -ENOMEM;
 
-	drng = crypto_alloc_rng(driver, type | CRYPTO_ALG_INTERNAL, mask);
+	drng = crypto_alloc_rng(driver, type, mask);
 	if (IS_ERR(drng)) {
 		printk(KERN_ERR "alg: drbg: could not allocate DRNG handle for "
 		       "%s\n", driver);
@@ -1945,7 +1945,7 @@ static int alg_test_kpp(const struct alg_test_desc *desc, const char *driver,
 	struct crypto_kpp *tfm;
 	int err = 0;
 
-	tfm = crypto_alloc_kpp(driver, type | CRYPTO_ALG_INTERNAL, mask);
+	tfm = crypto_alloc_kpp(driver, type, mask);
 	if (IS_ERR(tfm)) {
 		pr_err("alg: kpp: Failed to load tfm for %s: %ld\n",
 		       driver, PTR_ERR(tfm));
@@ -2104,7 +2104,7 @@ static int alg_test_akcipher(const struct alg_test_desc *desc,
 	struct crypto_akcipher *tfm;
 	int err = 0;
 
-	tfm = crypto_alloc_akcipher(driver, type | CRYPTO_ALG_INTERNAL, mask);
+	tfm = crypto_alloc_akcipher(driver, type, mask);
 	if (IS_ERR(tfm)) {
 		pr_err("alg: akcipher: Failed to load tfm for %s: %ld\n",
 		       driver, PTR_ERR(tfm));
@@ -2127,88 +2127,6 @@ static int alg_test_null(const struct alg_test_desc *desc,
 /* Please keep this list sorted by algorithm name. */
 static const struct alg_test_desc alg_test_descs[] = {
 	{
-		.alg = "__cbc-cast5-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__cbc-cast6-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__cbc-serpent-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__cbc-serpent-avx2",
-		.test = alg_test_null,
-	}, {
-		.alg = "__cbc-serpent-sse2",
-		.test = alg_test_null,
-	}, {
-		.alg = "__cbc-twofish-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-cbc-aes-aesni",
-		.test = alg_test_null,
-		.fips_allowed = 1,
-	}, {
-		.alg = "__driver-cbc-camellia-aesni",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-cbc-camellia-aesni-avx2",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-cbc-cast5-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-cbc-cast6-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-cbc-serpent-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-cbc-serpent-avx2",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-cbc-serpent-sse2",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-cbc-twofish-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-ecb-aes-aesni",
-		.test = alg_test_null,
-		.fips_allowed = 1,
-	}, {
-		.alg = "__driver-ecb-camellia-aesni",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-ecb-camellia-aesni-avx2",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-ecb-cast5-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-ecb-cast6-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-ecb-serpent-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-ecb-serpent-avx2",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-ecb-serpent-sse2",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-ecb-twofish-avx",
-		.test = alg_test_null,
-	}, {
-		.alg = "__driver-gcm-aes-aesni",
-		.test = alg_test_null,
-		.fips_allowed = 1,
-	}, {
-		.alg = "__ghash-pclmulqdqni",
-		.test = alg_test_null,
-		.fips_allowed = 1,
-	}, {
 		.alg = "adiantum(xchacha12,aes)",
 		.test = alg_test_skcipher,
 		.suite = {
@@ -2753,55 +2671,6 @@ static const struct alg_test_desc alg_test_descs[] = {
 			}
 		}
 	}, {
-		.alg = "cryptd(__driver-cbc-aes-aesni)",
-		.test = alg_test_null,
-		.fips_allowed = 1,
-	}, {
-		.alg = "cryptd(__driver-cbc-camellia-aesni)",
-		.test = alg_test_null,
-	}, {
-		.alg = "cryptd(__driver-cbc-camellia-aesni-avx2)",
-		.test = alg_test_null,
-	}, {
-		.alg = "cryptd(__driver-cbc-serpent-avx2)",
-		.test = alg_test_null,
-	}, {
-		.alg = "cryptd(__driver-ecb-aes-aesni)",
-		.test = alg_test_null,
-		.fips_allowed = 1,
-	}, {
-		.alg = "cryptd(__driver-ecb-camellia-aesni)",
-		.test = alg_test_null,
-	}, {
-		.alg = "cryptd(__driver-ecb-camellia-aesni-avx2)",
-		.test = alg_test_null,
-	}, {
-		.alg = "cryptd(__driver-ecb-cast5-avx)",
-		.test = alg_test_null,
-	}, {
-		.alg = "cryptd(__driver-ecb-cast6-avx)",
-		.test = alg_test_null,
-	}, {
-		.alg = "cryptd(__driver-ecb-serpent-avx)",
-		.test = alg_test_null,
-	}, {
-		.alg = "cryptd(__driver-ecb-serpent-avx2)",
-		.test = alg_test_null,
-	}, {
-		.alg = "cryptd(__driver-ecb-serpent-sse2)",
-		.test = alg_test_null,
-	}, {
-		.alg = "cryptd(__driver-ecb-twofish-avx)",
-		.test = alg_test_null,
-	}, {
-		.alg = "cryptd(__driver-gcm-aes-aesni)",
-		.test = alg_test_null,
-		.fips_allowed = 1,
-	}, {
-		.alg = "cryptd(__ghash-pclmulqdqni)",
-		.test = alg_test_null,
-		.fips_allowed = 1,
-	}, {
 		.alg = "ctr(aes)",
 		.test = alg_test_skcipher,
 		.fips_allowed = 1,
@@ -3127,10 +2996,6 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "drbg_pr_sha512",
 		.fips_allowed = 1,
 		.test = alg_test_null,
-	}, {
-		.alg = "ecb(__aes-aesni)",
-		.test = alg_test_null,
-		.fips_allowed = 1,
 	}, {
 		.alg = "ecb(aes)",
 		.test = alg_test_skcipher,
