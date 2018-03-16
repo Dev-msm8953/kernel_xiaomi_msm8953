@@ -1269,9 +1269,11 @@ ifdef CONFIG_TRIM_UNUSED_KSYMS
 	  "$(MAKE) -f $(srctree)/Makefile vmlinux"
 endif
 
-# standalone target for easier testing
-include/generated/autoksyms.h: FORCE
-	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/adjust_autoksyms.sh true
+autoksyms_h := $(if $(CONFIG_TRIM_UNUSED_KSYMS), include/generated/autoksyms.h)
+
+$(autoksyms_h):
+	$(Q)mkdir -p $(dir $@)
+	$(Q)touch $@
 
 ARCH_POSTLINK := $(wildcard $(srctree)/arch/$(SRCARCH)/Makefile.postlink)
 
@@ -1338,7 +1340,7 @@ endif
 # that need to depend on updated CONFIG_* values can be checked here.
 prepare2: prepare3 prepare-compiler-check outputmakefile asm-generic
 
-prepare1: prepare2 $(version_h) include/generated/utsrelease.h \
+prepare1: prepare2 $(version_h) $(autoksyms_h) include/generated/utsrelease.h \
                    include/config/auto.conf
 	$(cmd_crmodverdir)
 
