@@ -361,6 +361,8 @@ READELF	= llvm-readelf
 OBJSIZE	= llvm-size
 STRIP		= llvm-strip
 LDLLD		= ld.lld
+LLVMNM		= llvm-nm
+LLVMOBJCOPY	= llvm-objcopy
 else
 AS		= $(CROSS_COMPILE)as
 LD		= $(CROSS_COMPILE)ld
@@ -1009,6 +1011,9 @@ endif
 
 ifeq ($(CONFIG_RELR),y)
 LDFLAGS_vmlinux	+= --pack-dyn-relocs=relr
+OBJCOPY	:= $(LLVMOBJCOPY)
+NM	:= $(LLVMNM)
+export OBJCOPY NM
 endif
 
 # Default kernel image to build when no specific target is given.
