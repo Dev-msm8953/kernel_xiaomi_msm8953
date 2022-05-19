@@ -1287,7 +1287,7 @@ int do_huge_pmd_numa_page(struct fault_env *fe, pmd_t pmd)
 	 */
 	get_page(page);
 	spin_unlock(fe->ptl);
-	anon_vma = page_lock_anon_vma_read(page);
+	anon_vma = page_lock_anon_vma_read(page, NULL);
 
 	/* Confirm the PMD did not change while page_table_lock was released */
 	spin_lock(fe->ptl);
