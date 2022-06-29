@@ -25,6 +25,7 @@
  *  2007-11-29  RT balancing improvements by Steven Rostedt, Gregory Haskins,
  *              Thomas Gleixner, Mike Kravetz
  */
+#include <linux/lrng.h>
 
 #include <linux/sched.h>
 #include <linux/cpuset.h>
@@ -1672,6 +1673,8 @@ static void
 ttwu_stat(struct task_struct *p, int cpu, int wake_flags)
 {
 	struct rq *rq;
+
+	add_sched_randomness(p, cpu);
 
 	if (!schedstat_enabled())
 		return;
