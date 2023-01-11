@@ -24,9 +24,6 @@
 #include <asm/cputype.h>
 #include <asm/cpufeature.h>
 #include <asm/vectors.h>
-#include <uapi/linux/psci.h>
-#include <linux/arm-smccc.h>
-#include <linux/psci.h>
 
 static bool __maybe_unused
 is_affected_midr_range(const struct arm64_cpu_capabilities *entry, int scope)
@@ -181,6 +178,10 @@ static void enable_psci_bp_hardening(const struct arm64_cpu_capabilities *entry)
 				       __psci_hyp_bp_inval_end);
 }
 #endif
+
+#include <uapi/linux/psci.h>
+#include <linux/arm-smccc.h>
+#include <linux/psci.h>
 
 static void call_smc_arch_workaround_1(void)
 {
@@ -456,6 +457,10 @@ static const struct midr_range arm64_bp_harden_smccc_cpus[] = {
 	MIDR_ALL_VERSIONS(MIDR_CORTEX_A72),
 	MIDR_ALL_VERSIONS(MIDR_CORTEX_A73),
 	MIDR_ALL_VERSIONS(MIDR_CORTEX_A75),
+#ifndef CONFIG_PSCI_BP_HARDENING
+	MIDR_ALL_VERSIONS(MIDR_KRYO3G),
+	MIDR_ALL_VERSIONS(MIDR_KRYO2XX_GOLD),
+#endif
 	MIDR_ALL_VERSIONS(MIDR_BRCM_VULCAN),
 	MIDR_ALL_VERSIONS(MIDR_CAVIUM_THUNDERX2),
 	{},
@@ -464,6 +469,14 @@ static const struct midr_range arm64_bp_harden_smccc_cpus[] = {
 static const struct midr_range arm64_bp_harden_smccc_cpus_qti[] = {
 	MIDR_ALL_VERSIONS(MIDR_KRYO3G),
 	MIDR_ALL_VERSIONS(MIDR_KRYO2XX_GOLD),
+	{},
+};
+
+static const struct midr_range arm64_psci_bp_harden_cpus[] = {
+#ifdef CONFIG_PSCI_BP_HARDENING
+	MIDR_ALL_VERSIONS(MIDR_KRYO3G),
+	MIDR_ALL_VERSIONS(MIDR_KRYO2XX_GOLD),
+#endif
 	{},
 };
 
@@ -742,6 +755,8 @@ static bool is_spectre_bhb_fw_affected(int scope)
 	static const struct midr_range spectre_bhb_firmware_mitigated_list[] = {
 		MIDR_ALL_VERSIONS(MIDR_CORTEX_A73),
 		MIDR_ALL_VERSIONS(MIDR_CORTEX_A75),
+		MIDR_ALL_VERSIONS(MIDR_KRYO3G),
+		MIDR_ALL_VERSIONS(MIDR_KRYO2XX_GOLD),
 		{},
 	};
 	bool cpu_in_list = is_midr_in_range_list(read_cpuid_id(),
@@ -878,7 +893,9 @@ static void kvm_setup_bhb_slot(const char *hyp_vecs_start) { };
 static bool is_spectrev2_safe(void)
 {
 	return !is_midr_in_range_list(read_cpuid_id(),
-				      arm64_bp_harden_smccc_cpus);
+					arm64_psci_bp_harden_cpus) &&
+		!is_midr_in_range_list(read_cpuid_id(),
+					arm64_bp_harden_smccc_cpus);
 }
 
 void spectre_bhb_enable_mitigation(const struct arm64_cpu_capabilities *entry)
