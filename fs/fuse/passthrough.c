@@ -20,7 +20,6 @@ static inline void kiocb_clone(struct kiocb *kiocb, struct kiocb *kiocb_src,
 		.ki_filp = filp,
 		.ki_flags = kiocb_src->ki_flags,
 		.ki_hint = kiocb_src->ki_hint,
-		.ki_ioprio = kiocb_src->ki_ioprio,
 		.ki_pos = kiocb_src->ki_pos,
 	};
 }
@@ -80,129 +79,6 @@ static void fuse_aio_rw_complete(struct kiocb *iocb, long res, long res2)
 
 	fuse_aio_cleanup_handler(aio_req);
 	iocb_fuse->ki_complete(iocb_fuse, res, res2);
-}
-
-ssize_t fuse_passthrough_read_iter(struct kiocb *iocb_fuse,
-				   struct iov_iter *iter)
-{
-	ssize_t ret;
-	const struct cred *old_cred;
-	struct file *fuse_filp = iocb_fuse->ki_filp;
-	struct fuse_file *ff = fuse_filp->private_data;
-	struct file *passthrough_filp = ff->passthrough.filp;
-
-	if (!iov_iter_count(iter))
-		return 0;
-
-	old_cred = override_creds(ff->passthrough.cred);
-	if (is_sync_kiocb(iocb_fuse)) {
-		ret = vfs_iter_read(passthrough_filp, iter, &iocb_fuse->ki_pos,
-				    iocb_to_rw_flags(iocb_fuse->ki_flags,
-						     PASSTHROUGH_IOCB_MASK));
-	} else {
-		struct fuse_aio_req *aio_req;
-
-		aio_req = kmalloc(sizeof(struct fuse_aio_req), GFP_KERNEL);
-		if (!aio_req) {
-			ret = -ENOMEM;
-			goto out;
-		}
-
-		aio_req->iocb_fuse = iocb_fuse;
-		kiocb_clone(&aio_req->iocb, iocb_fuse, passthrough_filp);
-		aio_req->iocb.ki_complete = fuse_aio_rw_complete;
-		ret = call_read_iter(passthrough_filp, &aio_req->iocb, iter);
-		if (ret != -EIOCBQUEUED)
-			fuse_aio_cleanup_handler(aio_req);
-	}
-out:
-	revert_creds(old_cred);
-
-	fuse_file_accessed(fuse_filp, passthrough_filp);
-
-	return ret;
-}
-
-ssize_t fuse_passthrough_write_iter(struct kiocb *iocb_fuse,
-				    struct iov_iter *iter)
-{
-	ssize_t ret;
-	const struct cred *old_cred;
-	struct file *fuse_filp = iocb_fuse->ki_filp;
-	struct fuse_file *ff = fuse_filp->private_data;
-	struct inode *fuse_inode = file_inode(fuse_filp);
-	struct file *passthrough_filp = ff->passthrough.filp;
-	struct inode *passthrough_inode = file_inode(passthrough_filp);
-
-	if (!iov_iter_count(iter))
-		return 0;
-
-	inode_lock(fuse_inode);
-
-	fuse_copyattr(fuse_filp, passthrough_filp);
-
-	old_cred = override_creds(ff->passthrough.cred);
-	if (is_sync_kiocb(iocb_fuse)) {
-		file_start_write(passthrough_filp);
-		ret = vfs_iter_write(passthrough_filp, iter, &iocb_fuse->ki_pos,
-				     iocb_to_rw_flags(iocb_fuse->ki_flags,
-						      PASSTHROUGH_IOCB_MASK));
-		file_end_write(passthrough_filp);
-		if (ret > 0)
-			fuse_copyattr(fuse_filp, passthrough_filp);
-	} else {
-		struct fuse_aio_req *aio_req;
-
-		aio_req = kmalloc(sizeof(struct fuse_aio_req), GFP_KERNEL);
-		if (!aio_req) {
-			ret = -ENOMEM;
-			goto out;
-		}
-
-		file_start_write(passthrough_filp);
-		__sb_writers_release(passthrough_inode->i_sb, SB_FREEZE_WRITE);
-
-		aio_req->iocb_fuse = iocb_fuse;
-		kiocb_clone(&aio_req->iocb, iocb_fuse, passthrough_filp);
-		aio_req->iocb.ki_complete = fuse_aio_rw_complete;
-		ret = call_write_iter(passthrough_filp, &aio_req->iocb, iter);
-		if (ret != -EIOCBQUEUED)
-			fuse_aio_cleanup_handler(aio_req);
-	}
-out:
-	revert_creds(old_cred);
-	inode_unlock(fuse_inode);
-
-	return ret;
-}
-
-ssize_t fuse_passthrough_mmap(struct file *file, struct vm_area_struct *vma)
-{
-	int ret;
-	const struct cred *old_cred;
-	struct fuse_file *ff = file->private_data;
-	struct file *passthrough_filp = ff->passthrough.filp;
-
-	if (!passthrough_filp->f_op->mmap)
-		return -ENODEV;
-
-	if (WARN_ON(file != vma->vm_file))
-		return -EIO;
-
-	vma->vm_file = get_file(passthrough_filp);
-
-	old_cred = override_creds(ff->passthrough.cred);
-	ret = call_mmap(vma->vm_file, vma);
-	revert_creds(old_cred);
-
-	if (ret)
-		fput(passthrough_filp);
-	else
-		fput(file);
-
-	fuse_file_accessed(file, passthrough_filp);
-
-	return ret;
 }
 
 int fuse_passthrough_open(struct fuse_dev *fud, u32 lower_fd)

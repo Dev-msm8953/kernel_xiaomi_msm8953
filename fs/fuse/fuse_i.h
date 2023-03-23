@@ -925,7 +925,8 @@ u64 fuse_lock_owner_id(struct fuse_conn *fc, fl_owner_t id);
 void fuse_flush_time_update(struct inode *inode);
 void fuse_update_ctime(struct inode *inode);
 
-int fuse_update_attributes(struct inode *inode, struct file *file);
+int fuse_update_attributes(struct inode *inode, struct kstat *stat,
+			   struct file *file, bool *refreshed);
 
 void fuse_flush_writepages(struct inode *inode);
 
@@ -970,7 +971,7 @@ long fuse_do_ioctl(struct file *file, unsigned int cmd, unsigned long arg,
 		   unsigned int flags);
 long fuse_ioctl_common(struct file *file, unsigned int cmd,
 		       unsigned long arg, unsigned int flags);
-__poll_t fuse_file_poll(struct file *file, poll_table *wait);
+unsigned fuse_file_poll(struct file *file, poll_table *wait);
 int fuse_dev_release(struct inode *inode, struct file *file);
 
 bool fuse_write_update_size(struct inode *inode, loff_t pos);

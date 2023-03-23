@@ -11,7 +11,6 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/poll.h>
-#include <linux/sched/signal.h>
 #include <linux/uio.h>
 #include <linux/miscdevice.h>
 #include <linux/namei.h>
@@ -209,8 +208,6 @@ static void queue_request(struct fuse_iqueue *fiq, struct fuse_req *req,
 			      (struct fuse_arg *) req->args->in_args);
 	list_add_tail(&req->list, &fiq->pending);
 	if (sync)
-		wake_up_sync(&fiq->waitq);
-	else
 		wake_up(&fiq->waitq);
 	kill_fasync(&fiq->fasync, SIGIO, POLL_IN);
 }
@@ -1366,8 +1363,7 @@ static ssize_t fuse_dev_splice_read(struct file *in, loff_t *ppos,
 	if (!fud)
 		return -EPERM;
 
-	bufs = kvmalloc_array(pipe->buffers, sizeof(struct pipe_buffer),
-			      GFP_KERNEL);
+	bufs = kmalloc(pipe->buffers * sizeof(struct pipe_buffer), GFP_KERNEL);
 	if (!bufs)
 		return -ENOMEM;
 
@@ -1651,7 +1647,8 @@ static void fuse_retrieve_end(struct fuse_conn *fc, struct fuse_args *args,
 	struct fuse_retrieve_args *ra =
 		container_of(args, typeof(*ra), ap.args);
 
-	release_pages(ra->ap.pages, ra->ap.num_pages);
+	release_pages(ra->ap.pages, ra->ap.num_pages, false);
+	/* release_pages(req->pages, req->num_pages, false); */
 	kfree(ra);
 }
 
@@ -1982,8 +1979,7 @@ static ssize_t fuse_dev_splice_write(struct pipe_inode_info *pipe,
 
 	pipe_lock(pipe);
 
-	bufs = kvmalloc_array(pipe->nrbufs, sizeof(struct pipe_buffer),
-			      GFP_KERNEL);
+	bufs = kmalloc(pipe->buffers * sizeof(struct pipe_buffer), GFP_KERNEL);
 	if (!bufs) {
 		pipe_unlock(pipe);
 		return -ENOMEM;
@@ -2052,23 +2048,23 @@ out_free:
 	return ret;
 }
 
-static __poll_t fuse_dev_poll(struct file *file, poll_table *wait)
+static unsigned fuse_dev_poll(struct file *file, poll_table *wait)
 {
-	__poll_t mask = EPOLLOUT | EPOLLWRNORM;
+	unsigned mask = POLLOUT | POLLWRNORM;
 	struct fuse_iqueue *fiq;
 	struct fuse_dev *fud = fuse_get_dev(file);
 
 	if (!fud)
-		return EPOLLERR;
+		return POLLERR;
 
 	fiq = &fud->fc->iq;
 	poll_wait(file, &fiq->waitq, wait);
 
 	spin_lock(&fiq->lock);
 	if (!fiq->connected)
-		mask = EPOLLERR;
+		mask = POLLERR;
 	else if (request_pending(fiq))
-		mask |= EPOLLIN | EPOLLRDNORM;
+		mask |= POLLIN | POLLRDNORM;
 	spin_unlock(&fiq->lock);
 
 	return mask;

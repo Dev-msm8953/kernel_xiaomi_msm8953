@@ -432,7 +432,7 @@ static struct dentry *fuse_lookup(struct inode *dir, struct dentry *entry,
  */
 static int fuse_create_open(struct inode *dir, struct dentry *entry,
 			    struct file *file, unsigned flags,
-			    umode_t mode)
+			    umode_t mode, int *opened)
 {
 	int err;
 	struct inode *inode;
@@ -505,7 +505,7 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
 	d_instantiate(entry, inode);
 	fuse_change_entry_timeout(entry, &outentry);
 	fuse_invalidate_attr(dir);
-	err = finish_open(file, entry, generic_file_open);
+	err = finish_open(file, entry, generic_file_open, opened);
 	if (err) {
 		fi = get_fuse_inode(inode);
 		fuse_sync_release(fi, ff, flags);
@@ -526,7 +526,7 @@ out_err:
 static int fuse_mknod(struct inode *, struct dentry *, umode_t, dev_t);
 static int fuse_atomic_open(struct inode *dir, struct dentry *entry,
 			    struct file *file, unsigned flags,
-			    umode_t mode)
+			    umode_t mode, int *opened)
 {
 	int err;
 	struct fuse_conn *fc = get_fuse_conn(dir);
@@ -545,12 +545,12 @@ static int fuse_atomic_open(struct inode *dir, struct dentry *entry,
 		goto no_open;
 
 	/* Only creates */
-	file->f_mode |= FMODE_CREATED;
+	*opened |= FILE_CREATED;
 
 	if (fc->no_create)
 		goto mknod;
 
-	err = fuse_create_open(dir, entry, file, flags, mode);
+	err = fuse_create_open(dir, entry, file, flags, mode, opened);
 	if (err == -ENOSYS) {
 		fc->no_create = 1;
 		goto mknod;
@@ -975,32 +975,24 @@ static int fuse_update_get_attr(struct inode *inode, struct file *file,
 				struct kstat *stat, unsigned int flags)
 {
 	struct fuse_inode *fi = get_fuse_inode(inode);
-	int err = 0;
-	bool sync;
+	int err;
+	bool r;
 
-	if (flags & AT_STATX_FORCE_SYNC)
-		sync = true;
-	else if (flags & AT_STATX_DONT_SYNC)
-		sync = false;
-	else
-		sync = time_before64(fi->i_time, get_jiffies_64());
-
-	if (sync) {
+	if (time_before64(fi->i_time, get_jiffies_64())) {
+		r = true;
 		forget_all_cached_acls(inode);
 		err = fuse_do_getattr(inode, stat, file);
-	} else if (stat) {
-		generic_fillattr(inode, stat);
-		stat->mode = fi->orig_i_mode;
-		stat->ino = fi->orig_ino;
-	}
+	} else {
+		r = false;
+		err = 0;
+		if (stat) {
+			generic_fillattr(inode, stat);
+			stat->mode = fi->orig_i_mode;
+			stat->ino = fi->orig_ino;
+		}
 
 	return err;
-}
-
-int fuse_update_attributes(struct inode *inode, struct file *file)
-{
-	/* Do *not* need to get atime for internal purposes */
-	return fuse_update_get_attr(inode, file, NULL, 0);
+	}
 }
 
 int fuse_reverse_inval_entry(struct super_block *sb, u64 parent_nodeid,
@@ -1682,16 +1674,14 @@ static int fuse_setattr(struct dentry *entry, struct iattr *attr)
 	return ret;
 }
 
-static int fuse_getattr(const struct path *path, struct kstat *stat,
-			u32 request_mask, unsigned int flags)
+static int fuse_getattr(struct vfsmount *mnt, struct dentry *entry,
+			struct kstat *stat)
 {
-	struct inode *inode = d_inode(path->dentry);
+	struct inode *inode = d_inode(entry);
 	struct fuse_conn *fc = get_fuse_conn(inode);
 
 	if (!fuse_allow_current_process(fc))
 		return -EACCES;
-
-	return fuse_update_get_attr(inode, NULL, stat, flags);
 }
 
 static const struct inode_operations fuse_dir_inode_operations = {

@@ -124,12 +124,9 @@ static void fuse_destroy_inode(struct inode *inode)
 
 static void fuse_evict_inode(struct inode *inode)
 {
-	/* Will write inode on close/munmap and in all other dirtiers */
-	WARN_ON(inode->i_state & I_DIRTY_INODE);
-
 	truncate_inode_pages_final(&inode->i_data);
 	clear_inode(inode);
-	if (inode->i_sb->s_flags & SB_ACTIVE) {
+	if (inode->i_sb->s_flags & MS_ACTIVE) {
 		struct fuse_conn *fc = get_fuse_conn(inode);
 		struct fuse_inode *fi = get_fuse_inode(inode);
 		fuse_queue_forget(fc, fi->forget, fi->nodeid, fi->nlookup);
@@ -140,7 +137,7 @@ static void fuse_evict_inode(struct inode *inode)
 static int fuse_remount_fs(struct super_block *sb, int *flags, char *data)
 {
 	sync_filesystem(sb);
-	if (*flags & SB_MANDLOCK)
+	if (*flags & MS_MANDLOCK)
 		return -EINVAL;
 
 	return 0;
@@ -1051,10 +1048,6 @@ static int fuse_bdi_init(struct fuse_conn *fc, struct super_block *sb)
 		bdi_put(sb->s_bdi);
 		sb->s_bdi = &noop_backing_dev_info;
 	}
-	err = super_setup_bdi_name(sb, "%u:%u%s", MAJOR(fc->dev),
-				   MINOR(fc->dev), suffix);
-	if (err)
-		return err;
 
 	sb->s_bdi->ra_pages = (VM_MAX_READAHEAD * 1024) / PAGE_SIZE;
 	/* fuse does it's own writeback accounting */
@@ -1132,10 +1125,10 @@ static int fuse_fill_super(struct super_block *sb, void *data, int silent)
 	int is_bdev = sb->s_bdev != NULL;
 
 	err = -EINVAL;
-	if (sb->s_flags & SB_MANDLOCK)
+	if (sb->s_flags & MS_MANDLOCK)
 		goto err;
 
-	sb->s_flags &= ~(SB_NOSEC | SB_I_VERSION);
+	sb->s_flags &= ~(MS_NOSEC | MS_I_VERSION);
 
 	if (!parse_fuse_opt(data, &d, is_bdev, sb->s_user_ns))
 		goto err;
@@ -1156,9 +1149,6 @@ static int fuse_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_maxbytes = MAX_LFS_FILESIZE;
 	sb->s_time_gran = 1;
 	sb->s_export_op = &fuse_export_operations;
-	sb->s_iflags |= SB_I_IMA_UNVERIFIABLE_SIGNATURE;
-	if (sb->s_user_ns != &init_user_ns)
-		sb->s_iflags |= SB_I_UNTRUSTED_MOUNTER;
 
 	file = fget(d.fd);
 	err = -EINVAL;
@@ -1199,9 +1189,9 @@ static int fuse_fill_super(struct super_block *sb, void *data, int silent)
 		goto err_dev_free;
 
 	/* Handle umasking inside the fuse code */
-	if (sb->s_flags & SB_POSIXACL)
+	if (sb->s_flags & MS_POSIXACL)
 		fc->dont_mask = 1;
-	sb->s_flags |= SB_POSIXACL;
+	sb->s_flags |= MS_POSIXACL;
 
 	fc->default_permissions = d.default_permissions;
 	fc->allow_other = d.allow_other;

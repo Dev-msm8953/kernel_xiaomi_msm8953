@@ -323,10 +323,6 @@ static int fuse_ctl_fill_super(struct super_block *sb, void *data, int silent)
 	struct fuse_conn *fc;
 	int err;
 
-	err = simple_fill_super(sb, FUSE_CTL_SUPER_MAGIC, &empty_descr);
-	if (err)
-		return err;
-
 	mutex_lock(&fuse_mutex);
 	BUG_ON(fuse_control_sb);
 	fuse_control_sb = sb;

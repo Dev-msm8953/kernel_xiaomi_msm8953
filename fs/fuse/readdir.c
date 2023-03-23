@@ -445,17 +445,6 @@ static int fuse_readdir_cached(struct file *file, struct dir_context *ctx)
 		ff->readdir.cache_off = 0;
 	}
 
-	/*
-	 * We're just about to start reading into the cache or reading the
-	 * cache; both cases require an up-to-date mtime value.
-	 */
-	if (!ctx->pos && fc->auto_inval_data) {
-		int err = fuse_update_attributes(inode, file);
-
-		if (err)
-			return err;
-	}
-
 retry:
 	spin_lock(&fi->rdc.lock);
 retry_locked:
