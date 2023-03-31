@@ -124,6 +124,12 @@ config QCOM_DLOAD_MODE
 	  make the kernel reboot on a kernel panic - that must be
 	  enabled via another mechanism.
 
+config PAPER_ON_POWERKEY_TWI_PANIC
+	bool "Debug export init log to pstore"
+	depends on PAPER_XIAOMI_KERNEL_MERGE
+	help
+	  If you encounter card 1 and need init log, please open it.
+
 config POWER_RESET_QNAP
 	bool "QNAP power-off driver"
 	depends on OF_GPIO && PLAT_ORION
