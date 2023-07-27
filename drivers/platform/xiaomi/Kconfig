@@ -55,12 +55,6 @@ config MACH_XIAOMI_YSL
         help
           Support for Xiaomi Redmi S2
 
-config PAPER_XIAOMI_KERNEL_MERGE
-	bool "Define paper xiaomi kernel"
-	depends on MACH_XIAOMI_MSM8953
-	help
-	 Define paper xiaomi device kernel.
-
 endmenu
 
 comment "Xiaomi Optimization Features"
