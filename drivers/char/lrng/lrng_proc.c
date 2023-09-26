@@ -34,15 +34,15 @@ static int lrng_proc_type_show(struct seq_file *m, void *v)
 		 "DRNG name: %s\n"
 		 "LRNG security strength in bits: %d\n"
 		 "Number of DRNG instances: %u\n"
-		 "Standards compliance: %s%s\n"
+		 "Standards compliance: %sNTG.1 (2011%s)\n"
 		 "LRNG minimally seeded: %s\n"
 		 "LRNG fully seeded: %s\n"
 		 "LRNG entropy level: %u\n",
 		 lrng_drng_init->drng_cb->drng_name(),
 		 lrng_security_strength(),
 		 numa_drngs,
-		 lrng_sp80090c_compliant() ? "SP800-90C " : "",
-		 lrng_ntg1_compliant() ? "NTG.1 " : "",
+		 lrng_sp80090c_compliant() ? "SP800-90C, " : "",
+		 lrng_ntg1_2022_compliant() ? " / 2022" : "",
 		 lrng_state_min_seeded() ? "true" : "false",
 		 lrng_state_fully_seeded() ? "true" : "false",
 		 lrng_avail_entropy());
@@ -65,22 +65,9 @@ static int lrng_proc_type_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int lrng_proc_type_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, lrng_proc_type_show, NULL);
-}
-
-static const struct file_operations lrng_proc_ops = {
-	.owner		= THIS_MODULE,
-	.open		= lrng_proc_type_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
 static int __init lrng_proc_type_init(void)
 {
-	proc_create("lrng_type", 0444, NULL, &lrng_proc_ops);
+	proc_create_single("lrng_type", 0444, NULL, &lrng_proc_type_show);
 	return 0;
 }
 

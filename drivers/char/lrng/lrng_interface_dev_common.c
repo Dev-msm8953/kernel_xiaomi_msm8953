@@ -8,7 +8,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/random.h>
-#include <linux/sched/signal.h>
 #include <linux/slab.h>
 
 #include "lrng_drng_mgr.h"
@@ -80,6 +79,23 @@ void lrng_state_exseed_allow_all(void)
 
 /************************ LRNG user output interfaces *************************/
 
+ssize_t lrng_read_seed(char __user *buf, size_t nbytes, unsigned int flags)
+{
+	ssize_t ret = 0;
+	u64 t[(sizeof(struct entropy_buf) + 3 * sizeof(u64) - 1) / sizeof(u64)];
+
+	memset(t, 0, sizeof(t));
+	ret = lrng_get_seed(t, min_t(size_t, nbytes, sizeof(t)), flags);
+	if (ret == -EMSGSIZE && copy_to_user(buf, t, sizeof(u64))) {
+		ret = -EFAULT;
+	} else if (ret > 0 && copy_to_user(buf, t, ret)) {
+		ret = -EFAULT;
+	}
+	memzero_explicit(t, sizeof(t));
+
+	return ret;
+}
+
 ssize_t lrng_read_common(char __user *buf, size_t nbytes, bool pr)
 {
 	ssize_t ret = 0;
@@ -136,7 +152,7 @@ ssize_t lrng_read_common(char __user *buf, size_t nbytes, bool pr)
 
 	/* Wipe data just returned from memory */
 	if (tmp_large)
-		kzfree(tmp_large);
+		kfree_sensitive(tmp_large);
 	else
 		memzero_explicit(tmpbuf, sizeof(tmpbuf));
 
@@ -165,19 +181,19 @@ ssize_t lrng_drng_read_block(struct file *file, char __user *buf, size_t nbytes,
 				      file->f_flags & O_SYNC, buf, nbytes);
 }
 
-unsigned int lrng_random_poll(struct file *file, poll_table *wait)
+__poll_t lrng_random_poll(struct file *file, poll_table *wait)
 {
-	unsigned int mask;
+	__poll_t mask;
 
 	poll_wait(file, &lrng_init_wait, wait);
 	poll_wait(file, &lrng_write_wait, wait);
 	mask = 0;
 	if (lrng_state_operational())
-		mask |= POLLIN | POLLRDNORM;
+		mask |= EPOLLIN | EPOLLRDNORM;
 	if (lrng_need_entropy() ||
 	    lrng_state_exseed_allow(lrng_noise_source_user)) {
 		lrng_state_exseed_set(lrng_noise_source_user, false);
-		mask |= POLLOUT | POLLWRNORM;
+		mask |= EPOLLOUT | EPOLLWRNORM;
 	}
 	return mask;
 }
@@ -230,7 +246,7 @@ ssize_t lrng_drng_write(struct file *file, const char __user *buffer,
 long lrng_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
 	u32 digestsize_bits;
-	int size, ent_count_bits;
+	int size, ent_count_bits, ret;
 	int __user *p = (int __user *)arg;
 
 	switch (cmd) {
@@ -265,8 +281,9 @@ long lrng_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			return -EINVAL;
 		/* there cannot be more entropy than data */
 		ent_count_bits = min(ent_count_bits, size<<3);
-		return lrng_drng_write_common((const char __user *)p, size,
-					      ent_count_bits);
+		ret = lrng_drng_write_common((const char __user *)p, size,
+					     ent_count_bits);
+		return (ret < 0) ? ret : 0;
 	case RNDZAPENTCNT:
 	case RNDCLEARPOOL:
 		/* Clear the entropy pool counter. */

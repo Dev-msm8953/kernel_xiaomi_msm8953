@@ -7,6 +7,8 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <asm/archrandom.h>
+#include <linux/module.h>
 #include <linux/random.h>
 #include <linux/utsname.h>
 #include <linux/workqueue.h>
@@ -40,14 +42,15 @@ struct lrng_state {
 	 */
 
 	atomic_t boot_entropy_thresh;	/* Reseed threshold */
-	atomic_t reseed_in_progress;	/* Flag for on executing reseed */
+	struct mutex reseed_in_progress;	/* Flag for on executing reseed */
 	struct work_struct lrng_seed_work;	/* (re)seed work queue */
 };
 
 static struct lrng_state lrng_state = {
 	false, false, false, false, false, false,
 	.boot_entropy_thresh	= ATOMIC_INIT(LRNG_INIT_ENTROPY_BITS),
-	.reseed_in_progress	= ATOMIC_INIT(0),
+	.reseed_in_progress	=
+		__MUTEX_INITIALIZER(lrng_state.reseed_in_progress),
 };
 
 /*
@@ -80,7 +83,19 @@ struct lrng_es_cb *lrng_es[] = {
 	&lrng_es_aux
 };
 
+static bool ntg1 = false;
+#ifdef CONFIG_LRNG_AIS2031_NTG1_SEEDING_STRATEGY
+module_param(ntg1, bool, 0444);
+MODULE_PARM_DESC(ntg1, "Enable AIS20/31 NTG.1 compliant seeding strategy\n");
+#endif
+
 /********************************** Helper ***********************************/
+
+bool lrng_ntg1_2022_compliant(void)
+{
+	/* Implies use of /dev/random w/ O_SYNC / getrandom w/ GRND_RANDOM */
+	return ntg1;
+}
 
 void lrng_debug_report_seedlevel(const char *name)
 {
@@ -107,12 +122,17 @@ void lrng_debug_report_seedlevel(const char *name)
  */
 int lrng_pool_trylock(void)
 {
-	return atomic_cmpxchg(&lrng_state.reseed_in_progress, 0, 1);
+	return mutex_trylock(&lrng_state.reseed_in_progress);
+}
+
+void lrng_pool_lock(void)
+{
+	mutex_lock(&lrng_state.reseed_in_progress);
 }
 
 void lrng_pool_unlock(void)
 {
-	atomic_set(&lrng_state.reseed_in_progress, 0);
+	mutex_unlock(&lrng_state.reseed_in_progress);
 }
 
 /* Set new entropy threshold for reseeding during boot */
@@ -144,6 +164,13 @@ void lrng_reset_state(void)
 void lrng_pool_all_numa_nodes_seeded(bool set)
 {
 	lrng_state.all_online_numa_node_seeded = set;
+	if (set)
+		wake_up_all(&lrng_init_wait);
+}
+
+bool lrng_pool_all_numa_nodes_seeded_get(void)
+{
+	return lrng_state.all_online_numa_node_seeded;
 }
 
 /* Return boolean whether LRNG reached minimally seed level */
@@ -168,10 +195,40 @@ static void lrng_init_wakeup(void)
 {
 	wake_up_all(&lrng_init_wait);
 	lrng_init_wakeup_dev();
+	lrng_kick_random_ready();
 }
 
-bool lrng_fully_seeded(bool fully_seeded, u32 collected_entropy)
+static u32 lrng_avail_entropy_thresh(void)
 {
+	u32 ent_thresh = lrng_security_strength();
+
+	/*
+	 * Apply oversampling during initialization according to SP800-90C as
+	 * we request a larger buffer from the ES.
+	 */
+	if (lrng_sp80090c_compliant() &&
+	    !lrng_state.all_online_numa_node_seeded)
+		ent_thresh += LRNG_SEED_BUFFER_INIT_ADD_BITS;
+
+	return ent_thresh;
+}
+
+bool lrng_fully_seeded(bool fully_seeded, u32 collected_entropy,
+		       struct entropy_buf *eb)
+{
+	/* AIS20/31 NTG.1: two entropy sources with each delivering 220 bits */
+	if (ntg1) {
+		u32 i, result = 0, ent_thresh = lrng_avail_entropy_thresh();
+
+		for_each_lrng_es(i) {
+			result += (eb ? eb->e_bits[i] :
+				        lrng_es[i]->curr_entropy(ent_thresh)) >=
+				  LRNG_AIS2031_NPTRNG_MIN_ENTROPY;
+		}
+
+		return (result >= 2);
+	}
+
 	return (collected_entropy >= lrng_get_seed_entropy_osr(fully_seeded));
 }
 
@@ -218,25 +275,9 @@ static void lrng_set_operational(void)
 	 */
 	if (lrng_state.lrng_fully_seeded) {
 		lrng_state.lrng_operational = true;
-		lrng_process_ready_list();
 		lrng_init_wakeup();
 		pr_info("LRNG fully operational\n");
 	}
-}
-
-static u32 lrng_avail_entropy_thresh(void)
-{
-	u32 ent_thresh = lrng_security_strength();
-
-	/*
-	 * Apply oversampling during initialization according to SP800-90C as
-	 * we request a larger buffer from the ES.
-	 */
-	if (lrng_sp80090c_compliant() &&
-	    !lrng_state.all_online_numa_node_seeded)
-		ent_thresh += LRNG_SEED_BUFFER_INIT_ADD_BITS;
-
-	return ent_thresh;
 }
 
 /* Available entropy in the entire LRNG considering all entropy sources */
@@ -276,12 +317,14 @@ void lrng_init_ops(struct entropy_buf *eb)
 	if (state->lrng_operational)
 		return;
 
-	requested_bits = lrng_get_seed_entropy_osr(
-					state->all_online_numa_node_seeded);
+	requested_bits = ntg1 ?
+		/* Approximation so that two ES should deliver 220 bits each */
+		(lrng_avail_entropy() + LRNG_AIS2031_NPTRNG_MIN_ENTROPY) :
+		/* Apply SP800-90C oversampling if applicable */
+		lrng_get_seed_entropy_osr(state->all_online_numa_node_seeded);
 
 	if (eb) {
-		for_each_lrng_es(i)
-			seed_bits += eb->e_bits[i];
+		seed_bits = lrng_entropy_rate_eb(eb);
 	} else {
 		u32 ent_thresh = lrng_avail_entropy_thresh();
 
@@ -294,7 +337,7 @@ void lrng_init_ops(struct entropy_buf *eb)
 		lrng_set_operational();
 		lrng_set_entropy_thresh(requested_bits);
 	} else if (lrng_fully_seeded(state->all_online_numa_node_seeded,
-				     seed_bits)) {
+				     seed_bits, eb)) {
 		if (state->can_invalidate)
 			invalidate_batched_entropy();
 
@@ -326,33 +369,41 @@ void lrng_init_ops(struct entropy_buf *eb)
 	}
 }
 
-int __init lrng_rand_initialize(void)
+void __init lrng_rand_initialize_early(void)
 {
 	struct seed {
-		ktime_t time;
 		unsigned long data[((LRNG_MAX_DIGESTSIZE +
 				     sizeof(unsigned long) - 1) /
 				    sizeof(unsigned long))];
 		struct new_utsname utsname;
 	} seed __aligned(LRNG_KCAPI_ALIGN);
+	size_t longs = 0;
 	unsigned int i;
 
-	seed.time = ktime_get_real();
-
-	for (i = 0; i < ARRAY_SIZE(seed.data); i++) {
-#ifdef CONFIG_LRNG_RANDOM_IF
-		if (!arch_get_random_seed_long_early(&(seed.data[i])) &&
-		    !arch_get_random_long_early(&seed.data[i]))
-#else
-		if (!arch_get_random_seed_long(&(seed.data[i])) &&
-		    !arch_get_random_long(&seed.data[i]))
-#endif
-			seed.data[i] = random_get_entropy();
+	for (i = 0; i < ARRAY_SIZE(seed.data); i += longs) {
+		longs = arch_get_random_seed_longs(seed.data + i,
+						   ARRAY_SIZE(seed.data) - i);
+		if (longs)
+			continue;
+		longs = arch_get_random_longs(seed.data + i,
+					      ARRAY_SIZE(seed.data) - i);
+		if (longs)
+			continue;
+		longs = 1;
 	}
-	memcpy(&seed.utsname, utsname(), sizeof(*(utsname())));
+	memcpy(&seed.utsname, init_utsname(), sizeof(*(init_utsname())));
 
 	lrng_pool_insert_aux((u8 *)&seed, sizeof(seed), 0);
 	memzero_explicit(&seed, sizeof(seed));
+}
+
+void __init lrng_rand_initialize(void)
+{
+	unsigned long entropy = random_get_entropy();
+	ktime_t time = ktime_get_real();
+
+	lrng_pool_insert_aux((u8 *)&entropy, sizeof(entropy), 0);
+	lrng_pool_insert_aux((u8 *)&time, sizeof(time), 0);
 
 	/* Initialize the seed work queue */
 	INIT_WORK(&lrng_state.lrng_seed_work, lrng_drng_seed_work);
@@ -361,12 +412,17 @@ int __init lrng_rand_initialize(void)
 	invalidate_batched_entropy();
 
 	lrng_state.can_invalidate = true;
-
-	return 0;
 }
 
 #ifndef CONFIG_LRNG_RANDOM_IF
-early_initcall(lrng_rand_initialize);
+static int __init lrng_rand_initialize_call(void)
+{
+	lrng_rand_initialize_early();
+	lrng_rand_initialize();
+	return 0;
+}
+
+early_initcall(lrng_rand_initialize_call);
 #endif
 
 /* Interface requesting a reseed of the DRNG */
@@ -385,7 +441,7 @@ void lrng_es_add_entropy(void)
 		return;
 
 	/* Ensure that the seeding only occurs once at any given time. */
-	if (lrng_pool_trylock())
+	if (!lrng_pool_trylock())
 		return;
 
 	/* Seed the DRNG with any available noise. */
@@ -396,7 +452,8 @@ void lrng_es_add_entropy(void)
 }
 
 /* Fill the seed buffer with data from the noise sources */
-void lrng_fill_seed_buffer(struct entropy_buf *eb, u32 requested_bits)
+void lrng_fill_seed_buffer(struct entropy_buf *eb, u32 requested_bits,
+			   bool force)
 {
 	struct lrng_state *state = &lrng_state;
 	u32 i, req_ent = lrng_sp80090c_compliant() ?
@@ -413,7 +470,8 @@ void lrng_fill_seed_buffer(struct entropy_buf *eb, u32 requested_bits)
 	 * operated SP800-90C compliant we want to comply with SP800-90A section
 	 * 9.2 mandating that DRNG is reseeded with the security strength.
 	 */
-	if (state->lrng_fully_seeded && (lrng_avail_entropy() < req_ent)) {
+	if (!force &&
+	    state->lrng_fully_seeded && (lrng_avail_entropy() < req_ent)) {
 		for_each_lrng_es(i)
 			eb->e_bits[i] = 0;
 

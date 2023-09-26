@@ -6,7 +6,8 @@
 #ifndef _LRNG_DEFINITIONS_H
 #define _LRNG_DEFINITIONS_H
 
-#include <crypto/sha.h>
+#include <crypto/sha1.h>
+#include <crypto/sha2.h>
 #include <linux/slab.h>
 
 /*************************** General LRNG parameter ***************************/
@@ -71,6 +72,9 @@
 #define LRNG_MIN_SEED_ENTROPY_BITS	128
 #define LRNG_INIT_ENTROPY_BITS		32
 
+/* AIS20/31: NTG.1.4 minimum entropy rate for one entropy source*/
+#define LRNG_AIS2031_NPTRNG_MIN_ENTROPY	220
+
 /*
  * Wakeup value
  *
@@ -116,6 +120,13 @@
  * as it will be casted into a struct shash_desc.
  */
 #define LRNG_POOL_SIZE	(sizeof(struct shash_desc) + HASH_MAX_DESCSIZE)
+
+/*
+ * How many attempts to reach fully seeded are allowed before trying to force
+ * reseed from available entropy (pull data from entropy sources in a repeated
+ * fashion allowing to sum up the entropy).
+ */
+#define LRNG_FORCE_FULLY_SEEDED_ATTEMPT	5
 
 /****************************** Helper code ***********************************/
 

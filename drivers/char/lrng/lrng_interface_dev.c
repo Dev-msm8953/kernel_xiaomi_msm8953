@@ -15,6 +15,7 @@ static const struct file_operations lrng_fops = {
 	.write = lrng_drng_write,
 	.poll  = lrng_random_poll,
 	.unlocked_ioctl = lrng_ioctl,
+	.compat_ioctl = compat_ptr_ioctl,
 	.fasync = lrng_fasync,
 	.llseek = noop_llseek,
 };
